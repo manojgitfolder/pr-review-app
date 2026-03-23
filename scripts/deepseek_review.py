@@ -70,14 +70,13 @@ def save_result(review):
     print(f"  Summary  : {review.get('summary', '')[:200]}")
 
 
-# Models ordered by free quota availability.
-# gemini-2.0-flash-lite has the highest free RPM (30) and TPM.
-# gemini-2.5-pro-exp-03-25 is free experimental with generous limits.
-# gemini-2.0-flash has lower free quota but still worth trying.
+# Current free-tier Gemini models (as of March 2026)
+# gemini-2.0-flash was retired on March 3, 2026 — do NOT use it
+# gemini-2.5-flash     : 10 RPM, 250 RPD free
+# gemini-2.5-flash-lite: 15 RPM, 1000 RPD free (highest free quota)
 GEMINI_MODELS = [
-    "gemini-2.0-flash-lite",        # 30 RPM free — highest free quota
-    "gemini-2.5-pro-exp-03-25",     # free experimental model
-    "gemini-2.0-flash",             # 15 RPM free
+    "gemini-2.5-flash-lite",   # highest free quota
+    "gemini-2.5-flash",        # reliable free fallback
 ]
 
 for model in GEMINI_MODELS:
@@ -107,10 +106,10 @@ for model in GEMINI_MODELS:
         err_body = e.read().decode()
         print(f"  HTTP {e.code}: {err_body[:500]}")
         if e.code in (401, 403):
-            print("  Invalid or unauthorized API key. Regenerate at https://aistudio.google.com/apikey")
+            print("  Invalid or unauthorized API key.")
+            print("  Regenerate at: https://aistudio.google.com/apikey")
             break
-        # 429 = quota exceeded for this model, try next
-        # 404 = model not available, try next
+        # 429 = quota exceeded, 404 = model unavailable — try next
         continue
 
     except json.JSONDecodeError as e:
@@ -122,11 +121,9 @@ for model in GEMINI_MODELS:
         break
 
 print("\nAll Gemini attempts failed.")
-print("ACTION REQUIRED: Go to https://aistudio.google.com/apikey and create a new API key,")
-print("then update the GEMINI_API_KEY secret in GitHub repo Settings → Secrets.")
 json.dump({
     "overall_status": "REQUEST_CHANGES",
-    "summary": "AI review failed: Gemini quota exceeded on all models. See workflow logs.",
+    "summary": "AI review failed: Gemini API call unsuccessful. Check workflow logs.",
     "meets_acceptance_criteria": False,
     "comments": [],
     "approval_reason": "Automated review could not complete. Please review manually."
