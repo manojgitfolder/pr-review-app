@@ -7,10 +7,23 @@ ac = os.environ.get('AC', 'No acceptance criteria provided.')
 jira_key = os.environ.get('JIRA_KEY', 'N/A')
 jira_summary = os.environ.get('JIRA_SUMMARY', 'N/A')
 tests_passed = os.environ.get('TEST_PASSED', 'false')
-api_key = os.environ.get('DEEPSEEK_API_KEY', '')
 
-if not api_key:
-    print("ERROR: DEEPSEEK_API_KEY not set")
+# Support both Groq (free) and DeepSeek
+groq_key = os.environ.get('GROQ_API_KEY', '')
+deepseek_key = os.environ.get('DEEPSEEK_API_KEY', '')
+
+if groq_key:
+    api_key = groq_key
+    api_url = 'https://api.groq.com/openai/v1/chat/completions'
+    model = 'llama3-70b-8192'
+    print("Using Groq API (free)")
+elif deepseek_key:
+    api_key = deepseek_key
+    api_url = 'https://api.deepseek.com/v1/chat/completions'
+    model = 'deepseek-chat'
+    print("Using DeepSeek API")
+else:
+    print("ERROR: No API key found. Set GROQ_API_KEY or DEEPSEEK_API_KEY")
     sys.exit(1)
 
 print(f"JIRA_KEY: {jira_key}")
@@ -40,14 +53,14 @@ prompt = "\n".join([
 ])
 
 payload = json.dumps({
-    "model": "deepseek-chat",
+    "model": model,
     "messages": [{"role": "user", "content": prompt}],
     "temperature": 0.1,
     "max_tokens": 2000
 }).encode()
 
 req = urllib.request.Request(
-    'https://api.deepseek.com/v1/chat/completions',
+    api_url,
     data=payload,
     headers={
         'Content-Type': 'application/json',
@@ -59,7 +72,7 @@ try:
     with urllib.request.urlopen(req, timeout=60) as resp:
         result = json.loads(resp.read())
         content = result['choices'][0]['message']['content'].strip()
-        print(f"RAW DeepSeek response:\n{content}")
+        print(f"RAW response:\n{content}")
 
         if content.startswith('```'):
             content = content.split('\n', 1)[1].rsplit('```', 1)[0].strip()
@@ -67,16 +80,15 @@ try:
         review = json.loads(content)
         json.dump(review, open('/tmp/review_result.json', 'w'), indent=2)
         print(f"Status: {review.get('overall_status')}")
-        print(f"Summary: {review.get('summary')}")
         print(f"Meets AC: {review.get('meets_acceptance_criteria')}")
         print(f"Comments: {len(review.get('comments', []))}")
 
 except urllib.error.HTTPError as e:
     body = e.read().decode()
-    print(f"DeepSeek HTTP error {e.code}: {body}")
+    print(f"API HTTP error {e.code}: {body}")
     fallback = {
         "overall_status": "REQUEST_CHANGES",
-        "summary": f"AI review failed: HTTP {e.code}",
+        "summary": f"AI review failed: HTTP {e.code} - {body[:200]}",
         "meets_acceptance_criteria": False,
         "comments": [],
         "approval_reason": "Automated review could not complete. Please review manually."
@@ -84,7 +96,7 @@ except urllib.error.HTTPError as e:
     json.dump(fallback, open('/tmp/review_result.json', 'w'), indent=2)
 
 except Exception as e:
-    print(f"DeepSeek error: {e}")
+    print(f"Error: {e}")
     fallback = {
         "overall_status": "REQUEST_CHANGES",
         "summary": f"AI review failed: {e}",
