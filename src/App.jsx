@@ -36,7 +36,8 @@ function App() {
 
   const completedCount = tasks.filter(t => t.completed).length;
   const totalCount = tasks.length;
-// return statement with header and main sections, including progress badge and progress bar, and rendering AddTask and TaskList components with 
+// return statement
+  return (
     <div className="app">
       <header className="app-header">
         <div className="header-content">
