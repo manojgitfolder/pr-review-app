@@ -65,7 +65,16 @@ jobs:
         run: |
           git fetch origin ${{ github.base_ref }}
           git diff origin/${{ github.base_ref }}...HEAD -- '*.js' '*.jsx' '*.ts' '*.tsx' '*.py' | head -c 15000 > /tmp/pr_diff.txt
-          echo "Diff size: $(wc -c < /tmp/pr_diff.txt) bytes"
+          DIFF_SIZE=$(wc -c < /tmp/pr_diff.txt)
+          echo "Diff size: $DIFF_SIZE bytes"
+          # If diff is empty (e.g. first commit), fall back to last commit diff
+          if [ "$DIFF_SIZE" -lt 10 ]; then
+            echo "WARNING: Diff empty, falling back to HEAD~1 diff"
+            git diff HEAD~1...HEAD -- '*.js' '*.jsx' '*.ts' '*.tsx' '*.py' | head -c 15000 > /tmp/pr_diff.txt
+            echo "Fallback diff size: $(wc -c < /tmp/pr_diff.txt) bytes"
+          fi
+          echo "--- Diff preview (first 300 chars) ---"
+          head -c 300 /tmp/pr_diff.txt
 
       - name: Extract Jira ticket from PR
         id: get_jira
@@ -87,7 +96,7 @@ jobs:
           JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
         run: python3 scripts/fetch_jira.py
 
-      - name: AI Code Review via DeepSeek
+      - name: AI Code Review
         id: ai_review
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -96,12 +105,17 @@ jobs:
           JIRA_KEY: ${{ steps.get_jira.outputs.jira_key }}
           JIRA_SUMMARY: ${{ steps.get_jira_ac.outputs.jira_summary }}
           AC: ${{ steps.get_jira_ac.outputs.acceptance_criteria }}
-          TEST_PASSED: ${{ needs.test.outputs.tests_passed }}
+          # FIX: was TEST_PASSED in script but TESTS_PASSED here — now both match
+          TESTS_PASSED: ${{ needs.test.outputs.tests_passed }}
         run: |
           python3 scripts/deepseek_review.py
+          echo ""
+          echo "--- review_result.json ---"
+          cat /tmp/review_result.json
+          echo ""
           STATUS=$(python3 -c "import json; print(json.load(open('/tmp/review_result.json')).get('overall_status','REQUEST_CHANGES'))")
           echo "review_status=$STATUS" >> $GITHUB_OUTPUT
-          echo "Review status: $STATUS"
+          echo "Final review status: $STATUS"
 
       - name: Post review comments to PR
         env:
@@ -117,8 +131,11 @@ jobs:
       - name: Check review result
         run: |
           STATUS=$(python3 -c "import json; print(json.load(open('/tmp/review_result.json')).get('overall_status','REQUEST_CHANGES'))")
+          SUMMARY=$(python3 -c "import json; print(json.load(open('/tmp/review_result.json')).get('summary','no summary'))")
+          echo "Status  : $STATUS"
+          echo "Summary : $SUMMARY"
           if [ "$STATUS" != "APPROVE" ]; then
-            echo "❌ AI review requested changes."
+            echo "❌ AI review requested changes. See PR comments for details."
             exit 1
           else
             echo "✅ AI review approved!"
