@@ -36,7 +36,7 @@ function App() {
 
   const completedCount = tasks.filter(t => t.completed).length;
   const totalCount = tasks.length;
-// return statement
+// return statements
   return (
     <div className="app">
       <header className="app-header">
