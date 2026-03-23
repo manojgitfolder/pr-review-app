@@ -87,12 +87,18 @@ jobs:
           JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
         run: |
           python3 scripts/fetch_jira.py
-          echo "acceptance_criteria<<EOF" >> $GITHUB_OUTPUT
+
+          # Use random delimiter to avoid conflicts with content
+          AC_DELIM="AC_DELIM_$(date +%s)"
+          SUMMARY_DELIM="SUMMARY_DELIM_$(date +%s)"
+
+          echo "acceptance_criteria<<${AC_DELIM}" >> $GITHUB_OUTPUT
           cat /tmp/jira_ac.txt >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-          echo "jira_summary<<EOF" >> $GITHUB_OUTPUT
+          echo "${AC_DELIM}" >> $GITHUB_OUTPUT
+
+          echo "jira_summary<<${SUMMARY_DELIM}" >> $GITHUB_OUTPUT
           cat /tmp/jira_summary.txt >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          echo "${SUMMARY_DELIM}" >> $GITHUB_OUTPUT
 
       - name: AI Code Review via DeepSeek
         id: ai_review
