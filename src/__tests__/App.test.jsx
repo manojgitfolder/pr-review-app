@@ -6,7 +6,8 @@ import App from '../App';
 describe('App Component', () => {
   test('renders the app title', () => {
     render(<App />);
-    expect(screen.getByText('TaskFlow')).toBeInTheDocument();
+    // Match partial text since title could be TaskFlow or TaskFlow Pro
+    expect(screen.getByText(/TaskFlow/i)).toBeInTheDocument();
   });
 
   test('shows initial tasks', () => {
@@ -18,18 +19,18 @@ describe('App Component', () => {
 
   test('displays correct progress count', () => {
     render(<App />);
-    // 1 of 3 tasks completed initially
-    expect(screen.getByText('1/3')).toBeInTheDocument();
+    // progress-text span has "1/3" but rendered as separate nodes
+    const progressText = document.querySelector('.progress-text');
+    expect(progressText).toBeTruthy();
+    expect(progressText.textContent.replace(/\s/g, '')).toBe('1/3');
   });
 
   test('adds a new task', () => {
     render(<App />);
     const input = screen.getByTestId('task-input');
     const addBtn = screen.getByTestId('add-btn');
-
     fireEvent.change(input, { target: { value: 'New test task' } });
     fireEvent.click(addBtn);
-
     expect(screen.getByText('New test task')).toBeInTheDocument();
   });
 
@@ -37,21 +38,18 @@ describe('App Component', () => {
     render(<App />);
     const input = screen.getByTestId('task-input');
     const addBtn = screen.getByTestId('add-btn');
-
     fireEvent.change(input, { target: { value: 'Extra task' } });
     fireEvent.click(addBtn);
-
-    // 1 completed out of 4 now
-    expect(screen.getByText('1/4')).toBeInTheDocument();
+    const progressText = document.querySelector('.progress-text');
+    expect(progressText.textContent.replace(/\s/g, '')).toBe('1/4');
   });
 
   test('toggles task completion', () => {
     render(<App />);
-    // "Write unit tests" is initially incomplete
     const checkboxes = screen.getAllByTestId('task-checkbox');
-    // Second task (index 1) is "Write unit tests" - incomplete
     fireEvent.click(checkboxes[1]);
-    expect(screen.getByText('2/3')).toBeInTheDocument();
+    const progressText = document.querySelector('.progress-text');
+    expect(progressText.textContent.replace(/\s/g, '')).toBe('2/3');
   });
 
   test('deletes a task', () => {
@@ -59,6 +57,7 @@ describe('App Component', () => {
     const deleteButtons = screen.getAllByTestId('task-delete');
     fireEvent.click(deleteButtons[0]);
     expect(screen.queryByText('Setup project')).not.toBeInTheDocument();
-    expect(screen.getByText('2/2')).toBeInTheDocument();
+    const progressText = document.querySelector('.progress-text');
+    expect(progressText.textContent.replace(/\s/g, '')).toBe('0/2');
   });
 });

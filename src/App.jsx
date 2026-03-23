@@ -43,7 +43,7 @@ function App() {
         <div className="header-content">
           <h1 className="app-title">
             <span className="title-icon">◈</span>
-            TaskFlow Proo
+            TaskFlow Pro
           </h1>
           <div className="progress-badge">
             <span className="progress-text">{completedCount}/{totalCount}</span>
