@@ -1,0 +1,108 @@
+.task-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.task-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.85rem 1rem;
+  transition: border-color 0.2s, transform 0.15s;
+}
+
+.task-item:hover {
+  border-color: var(--accent);
+  transform: translateX(3px);
+}
+
+.task-item.completed {
+  opacity: 0.5;
+}
+
+.task-item.completed .task-title {
+  text-decoration: line-through;
+  color: var(--text-muted);
+}
+
+.task-checkbox {
+  width: 22px;
+  height: 22px;
+  border: 2px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--success);
+  font-size: 0.75rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.2s, background 0.2s;
+  flex-shrink: 0;
+}
+
+.task-item.completed .task-checkbox {
+  background: var(--success);
+  border-color: var(--success);
+  color: #000;
+}
+
+.task-checkbox:hover {
+  border-color: var(--accent);
+}
+
+.task-title {
+  flex: 1;
+  font-size: 0.95rem;
+  color: var(--text);
+}
+
+.task-priority {
+  font-family: 'Space Mono', monospace;
+  font-size: 0.7rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 20px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.priority-high { background: rgba(255, 101, 132, 0.15); color: var(--high); border: 1px solid rgba(255,101,132,0.3); }
+.priority-medium { background: rgba(255, 217, 61, 0.15); color: var(--medium); border: 1px solid rgba(255,217,61,0.3); }
+.priority-low { background: rgba(107, 203, 119, 0.15); color: var(--low); border: 1px solid rgba(107,203,119,0.3); }
+
+.task-delete {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 1.3rem;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0 0.2rem;
+  transition: color 0.2s;
+  flex-shrink: 0;
+}
+
+.task-delete:hover { color: var(--accent2); }
+
+.task-empty {
+  text-align: center;
+  padding: 3rem 1rem;
+  color: var(--text-muted);
+}
+
+.empty-icon {
+  display: block;
+  font-size: 2rem;
+  margin-bottom: 0.75rem;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
