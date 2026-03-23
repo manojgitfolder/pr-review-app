@@ -215,6 +215,10 @@ jobs:
         id: ai_review
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          AC: ${{ steps.get_jira_ac.outputs.acceptance_criteria }}
+          JIRA_KEY: ${{ steps.get_jira.outputs.jira_key }}
+          JIRA_SUMMARY: ${{ steps.get_jira_ac.outputs.jira_summary }}
+          TEST_PASSED: ${{ needs.test.outputs.tests_passed }}
         run: |
           DIFF=$(cat /tmp/pr_diff.txt)
           AC="${{ steps.get_jira_ac.outputs.acceptance_criteria }}"
@@ -348,11 +352,6 @@ jobs:
           STATUS=$(python3 -c "import json; d=json.load(open('/tmp/review_result.json')); print(d.get('overall_status','REQUEST_CHANGES'))")
           echo "review_status=$STATUS" >> $GITHUB_OUTPUT
           echo "Review status: $STATUS"
-        env:
-          AC: ${{ steps.get_jira_ac.outputs.acceptance_criteria }}
-          JIRA_KEY: ${{ steps.get_jira.outputs.jira_key }}
-          JIRA_SUMMARY: ${{ steps.get_jira_ac.outputs.jira_summary }}
-          TEST_PASSED: ${{ needs.test.outputs.tests_passed }}
 
       # ── Step 5: Post review comments to PR ──
       - name: Post review comments to PR
@@ -361,6 +360,8 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_COMMIT_SHA: ${{ github.event.pull_request.head.sha }}
+          JIRA_KEY: ${{ steps.get_jira.outputs.jira_key }}
+          JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
         run: |
           python3 << 'PYEOF'
           import json, os, sys
@@ -482,9 +483,6 @@ jobs:
               print(f"Review submitted without inline comments: HTTP {status}")
 
           PYEOF
-        env:
-          JIRA_KEY: ${{ steps.get_jira.outputs.jira_key }}
-          JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
 
       # ── Step 6: Fail the job if changes requested ──
       - name: Check review result
