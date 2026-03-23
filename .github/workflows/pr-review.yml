@@ -9,6 +9,9 @@ permissions:
   pull-requests: write
 
 jobs:
+  # ─────────────────────────────────────────
+  # JOB 1: Run unit tests
+  # ─────────────────────────────────────────
   test:
     name: Run Unit Tests
     runs-on: ubuntu-latest
@@ -42,6 +45,9 @@ jobs:
             echo "passed=false" >> $GITHUB_OUTPUT
           fi
 
+  # ─────────────────────────────────────────
+  # JOB 2: AI Code Review
+  # ─────────────────────────────────────────
   ai-code-review:
     name: DeepSeek AI Code Review
     runs-on: ubuntu-latest
@@ -54,7 +60,6 @@ jobs:
           fetch-depth: 0
 
       - name: Extract PR diff
-        id: get_diff
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -81,58 +86,7 @@ jobs:
           JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
           JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
         run: |
-          python3 - << 'PYEOF'
-import json, os, sys, base64
-import urllib.request, urllib.error
-
-jira_key = os.environ.get('JIRA_KEY', '')
-jira_base = os.environ.get('JIRA_BASE_URL', '')
-jira_email = os.environ.get('JIRA_EMAIL', '')
-jira_token = os.environ.get('JIRA_API_TOKEN', '')
-
-if not jira_key:
-    open('/tmp/jira_ac.txt','w').write('No Jira ticket linked. Review for general code quality.')
-    open('/tmp/jira_summary.txt','w').write('No Jira ticket')
-    sys.exit(0)
-
-url = f"{jira_base}/rest/api/3/issue/{jira_key}?fields=summary,description,customfield_10033,customfield_10016,customfield_10014"
-creds = base64.b64encode(f"{jira_email}:{jira_token}".encode()).decode()
-req = urllib.request.Request(url, headers={'Authorization': f'Basic {creds}', 'Content-Type': 'application/json'})
-
-def extract_adf(val):
-    texts = []
-    for block in val.get('content', []):
-        for item in block.get('content', []):
-            if item.get('type') == 'text':
-                texts.append(item.get('text',''))
-    return ' '.join(texts)
-
-try:
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        data = json.loads(resp.read())
-        fields = data.get('fields', {})
-        summary = fields.get('summary', 'No summary')
-        ac = ''
-        for f in ['customfield_10033','customfield_10016','customfield_10014']:
-            v = fields.get(f)
-            if not v: continue
-            if isinstance(v, str) and len(v) > 5: ac = v; break
-            if isinstance(v, dict): ac = extract_adf(v);
-            if ac: break
-        if not ac:
-            desc = fields.get('description', {})
-            if isinstance(desc, dict): ac = extract_adf(desc)[:2000]
-            elif isinstance(desc, str): ac = desc[:2000]
-        if not ac: ac = 'No acceptance criteria found.'
-        open('/tmp/jira_ac.txt','w').write(ac)
-        open('/tmp/jira_summary.txt','w').write(summary)
-        print(f"Fetched: {jira_key} - {summary}, AC: {len(ac)} chars")
-except Exception as e:
-    open('/tmp/jira_ac.txt','w').write(f'Could not fetch Jira: {e}')
-    open('/tmp/jira_summary.txt','w').write('Fetch failed')
-    print(f"Jira error: {e}")
-PYEOF
-
+          python3 scripts/fetch_jira.py
           echo "acceptance_criteria<<EOF" >> $GITHUB_OUTPUT
           cat /tmp/jira_ac.txt >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
@@ -145,75 +99,9 @@ PYEOF
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           JIRA_KEY: ${{ steps.get_jira.outputs.jira_key }}
-          JIRA_SUMMARY: ${{ steps.get_jira_ac.outputs.jira_summary }}
           TEST_PASSED: ${{ needs.test.outputs.tests_passed }}
         run: |
-          # Write AC to file safely
-          cat /tmp/jira_ac.txt > /tmp/ac_input.txt
-
-          python3 - << 'PYEOF'
-import json, os, sys
-import urllib.request, urllib.error
-
-diff = open('/tmp/pr_diff.txt').read()[:12000]
-ac = open('/tmp/ac_input.txt').read().strip()
-jira_key = os.environ.get('JIRA_KEY', 'N/A')
-jira_summary = os.environ.get('JIRA_SUMMARY', 'N/A')
-tests_passed = os.environ.get('TEST_PASSED', 'false')
-api_key = os.environ.get('DEEPSEEK_API_KEY', '')
-
-if not api_key:
-    print("ERROR: DEEPSEEK_API_KEY not set")
-    sys.exit(1)
-
-prompt = "\n".join([
-    "You are a senior software engineer doing a code review.",
-    "",
-    f"## Jira Ticket: {jira_key}",
-    f"## Summary: {jira_summary}",
-    "",
-    "## Acceptance Criteria:",
-    ac,
-    "",
-    f"## Tests passed: {tests_passed}",
-    "",
-    "## Code Diff:",
-    diff,
-    "",
-    "Return ONLY valid JSON (no markdown, no explanation):",
-    '{"overall_status":"APPROVE or REQUEST_CHANGES","summary":"assessment","meets_acceptance_criteria":true or false,"comments":[{"file":"path","line":1,"severity":"error|warning|suggestion","message":"comment"}],"approval_reason":"reason"}',
-    "",
-    "APPROVE only if: meets_acceptance_criteria=true AND no errors AND tests passed=true"
-])
-
-payload = json.dumps({
-    "model": "deepseek-chat",
-    "messages": [{"role": "user", "content": prompt}],
-    "temperature": 0.1,
-    "max_tokens": 2000
-}).encode()
-
-req = urllib.request.Request(
-    'https://api.deepseek.com/v1/chat/completions',
-    data=payload,
-    headers={'Content-Type':'application/json','Authorization':f'Bearer {api_key}'}
-)
-
-try:
-    with urllib.request.urlopen(req, timeout=60) as resp:
-        result = json.loads(resp.read())
-        content = result['choices'][0]['message']['content'].strip()
-        if content.startswith('```'):
-            content = content.split('\n',1)[1].rsplit('```',1)[0].strip()
-        review = json.loads(content)
-        json.dump(review, open('/tmp/review_result.json','w'), indent=2)
-        print(f"Status: {review.get('overall_status')}, Comments: {len(review.get('comments',[]))}")
-except Exception as e:
-    print(f"DeepSeek error: {e}")
-    fallback = {"overall_status":"REQUEST_CHANGES","summary":f"AI review failed: {e}","meets_acceptance_criteria":False,"comments":[],"approval_reason":"Automated review could not complete. Please review manually."}
-    json.dump(fallback, open('/tmp/review_result.json','w'), indent=2)
-PYEOF
-
+          python3 scripts/deepseek_review.py
           STATUS=$(python3 -c "import json; print(json.load(open('/tmp/review_result.json')).get('overall_status','REQUEST_CHANGES'))")
           echo "review_status=$STATUS" >> $GITHUB_OUTPUT
           echo "Review status: $STATUS"
@@ -227,85 +115,7 @@ PYEOF
           JIRA_KEY: ${{ steps.get_jira.outputs.jira_key }}
           JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
           TESTS_PASSED: ${{ needs.test.outputs.tests_passed }}
-        run: |
-          python3 - << 'PYEOF'
-import json, os
-import urllib.request, urllib.error
-
-review = json.load(open('/tmp/review_result.json'))
-token = os.environ['GH_TOKEN']
-repo = os.environ['GITHUB_REPOSITORY']
-pr_number = os.environ['PR_NUMBER']
-commit_sha = os.environ['PR_COMMIT_SHA']
-jira_key = os.environ.get('JIRA_KEY','')
-jira_base = os.environ.get('JIRA_BASE_URL','')
-tests_passed = os.environ.get('TESTS_PASSED','false')
-
-base_url = f"https://api.github.com/repos/{repo}"
-headers = {
-    'Authorization': f'Bearer {token}',
-    'Accept': 'application/vnd.github+json',
-    'X-GitHub-Api-Version': '2022-11-28',
-    'Content-Type': 'application/json'
-}
-
-def gh_post(url, payload):
-    req = urllib.request.Request(url, data=json.dumps(payload).encode(), headers=headers)
-    try:
-        with urllib.request.urlopen(req) as resp:
-            return json.loads(resp.read()), resp.status
-    except urllib.error.HTTPError as e:
-        print(f"GitHub error {e.code}: {e.read().decode()}")
-        return None, e.code
-
-s = "✅" if review['overall_status']=='APPROVE' else "❌"
-a = "✅" if review.get('meets_acceptance_criteria') else "❌"
-t = "✅" if tests_passed=="true" else "❌"
-jira_link = f"[{jira_key}]({jira_base}/browse/{jira_key})" if jira_key and jira_base else (jira_key or "Not linked")
-
-body = f"""## 🤖 DeepSeek AI Code Review
-
-| Check | Status |
-|-------|--------|
-| Overall | {s} **{review['overall_status']}** |
-| Unit Tests | {t} {'Passed' if tests_passed=='true' else 'Failed'} |
-| Acceptance Criteria | {a} {'Met' if review.get('meets_acceptance_criteria') else 'Not met'} |
-| Jira Ticket | {jira_link} |
-
-### Summary
-{review.get('summary','')}
-
-### Decision
-{review.get('approval_reason','')}
-
----
-*Reviewed by DeepSeek AI • {len(review.get('comments',[]))} inline comment(s)*"""
-
-gh_post(f"{base_url}/issues/{pr_number}/comments", {"body": body})
-print("Summary comment posted")
-
-emojis = {'error':'🔴','warning':'🟡','suggestion':'🔵'}
-comments = []
-for c in review.get('comments',[]):
-    if not c.get('file') or not c.get('line') or not c.get('message'): continue
-    comments.append({
-        "path": c['file'],
-        "line": int(c['line']),
-        "side": "RIGHT",
-        "body": f"{emojis.get(c.get('severity','suggestion'),'💬')} **{c.get('severity','SUGGESTION').upper()}**\n\n{c['message']}"
-    })
-
-event = "APPROVE" if review['overall_status']=='APPROVE' else "REQUEST_CHANGES"
-payload = {"commit_id":commit_sha,"body":review.get('approval_reason',''),"event":event,"comments":comments}
-_, status = gh_post(f"{base_url}/pulls/{pr_number}/reviews", payload)
-
-if status not in [200,201]:
-    print("Retrying without inline comments...")
-    payload['comments'] = []
-    gh_post(f"{base_url}/pulls/{pr_number}/reviews", payload)
-
-print(f"Review submitted: {event}")
-PYEOF
+        run: python3 scripts/post_comments.py
 
       - name: Check review result
         run: |
