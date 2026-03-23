@@ -3,7 +3,6 @@ import urllib.request, urllib.error
 
 diff = open('/tmp/pr_diff.txt').read()[:12000]
 
-# AC and summary come from env vars (set by workflow from previous step outputs)
 ac = os.environ.get('AC', 'No acceptance criteria provided.')
 jira_key = os.environ.get('JIRA_KEY', 'N/A')
 jira_summary = os.environ.get('JIRA_SUMMARY', 'N/A')
@@ -13,6 +12,12 @@ api_key = os.environ.get('DEEPSEEK_API_KEY', '')
 if not api_key:
     print("ERROR: DEEPSEEK_API_KEY not set")
     sys.exit(1)
+
+print(f"JIRA_KEY: {jira_key}")
+print(f"JIRA_SUMMARY: {jira_summary}")
+print(f"TEST_PASSED: {tests_passed}")
+print(f"AC: {ac[:200]}")
+print(f"DIFF size: {len(diff)} chars")
 
 prompt = "\n".join([
     "You are a senior software engineer doing a code review.",
@@ -54,11 +59,30 @@ try:
     with urllib.request.urlopen(req, timeout=60) as resp:
         result = json.loads(resp.read())
         content = result['choices'][0]['message']['content'].strip()
+        print(f"RAW DeepSeek response:\n{content}")
+
         if content.startswith('```'):
             content = content.split('\n', 1)[1].rsplit('```', 1)[0].strip()
+
         review = json.loads(content)
         json.dump(review, open('/tmp/review_result.json', 'w'), indent=2)
-        print(f"Status: {review.get('overall_status')}, Comments: {len(review.get('comments', []))}")
+        print(f"Status: {review.get('overall_status')}")
+        print(f"Summary: {review.get('summary')}")
+        print(f"Meets AC: {review.get('meets_acceptance_criteria')}")
+        print(f"Comments: {len(review.get('comments', []))}")
+
+except urllib.error.HTTPError as e:
+    body = e.read().decode()
+    print(f"DeepSeek HTTP error {e.code}: {body}")
+    fallback = {
+        "overall_status": "REQUEST_CHANGES",
+        "summary": f"AI review failed: HTTP {e.code}",
+        "meets_acceptance_criteria": False,
+        "comments": [],
+        "approval_reason": "Automated review could not complete. Please review manually."
+    }
+    json.dump(fallback, open('/tmp/review_result.json', 'w'), indent=2)
+
 except Exception as e:
     print(f"DeepSeek error: {e}")
     fallback = {
