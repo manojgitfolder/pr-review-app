@@ -36,14 +36,14 @@ function App() {
 
   const completedCount = tasks.filter(t => t.completed).length;
   const totalCount = tasks.length;
-
+// return statements
   return (
     <div className="app">
       <header className="app-header">
         <div className="header-content">
           <h1 className="app-title">
             <span className="title-icon">◈</span>
-            TaskFlow
+            TaskFlow Pro
           </h1>
           <div className="progress-badge">
             <span className="progress-text">{completedCount}/{totalCount}</span>
